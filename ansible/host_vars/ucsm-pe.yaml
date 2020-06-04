@@ -14,6 +14,6 @@ vlans_list:
     native: false
     state: present
   - vlan_id: 202
-    name: testing
+    name: development
     native: false
     state: present
