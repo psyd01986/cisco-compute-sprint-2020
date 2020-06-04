@@ -1,0 +1,129 @@
+---
+- hosts: ucs
+  vars:
+    ucsm_conn: &ucsm_conn
+      hostname: "{{ ansible_host }}"
+      username: "{{ ucsm_username }}"
+      password: "{{ ucsm_password }}"
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+    - name: Configure UUID address pool
+      ucs_uuid_pool:
+        <<: *ucsm_conn
+        name: Ansible-UUID-Pool
+        order: sequential
+        first_uuid: 2000-000000000001
+        last_uuid: 2000-000000000099
+
+    - name: Create KVM pool
+      ucs_ip_pool:
+        <<: *ucsm_conn
+        name: Ansible-KVM-Pool
+        order: sequential
+        first_addr: 192.168.172.30
+        last_addr: 192.168.172.39
+        subnet_mask: 255.255.255.0
+        default_gw: 192.168.172.2
+
+    - name: Create VLANs
+      ucs_vlans:
+        <<: *ucsm_conn
+        id: "{{ item.vlan_id }}"
+        name: "{{ item.name }}"
+        state: "{{ item.state }}"
+      loop: "{{ vlans_list }}"
+      tags:
+        - network
+
+    - name: Create MAC address pools
+      ucs_mac_pool:
+        <<: *ucsm_conn
+        name: Ansible-MAC-Pool
+        first_addr: 00:25:B5:00:66:00
+        last_addr: 00:25:B5:00:67:F3
+        order: sequential
+
+    - name: Configure vNIC template towards FI-A
+      ucs_vnic_template:
+        <<: *ucsm_conn
+        name: Ansible-Fabric-A
+        fabric: A
+        redundancy_type: primary
+        peer_redundancy_template: Ansible-Fabric-B
+        mac_pool: Ansible-MAC-Pool
+        template_type: updating-template
+        vlans_list: "{{ [{'name': 'default', 'native': 'yes', 'state': 'present'}] + vlans_list }}"
+      tags:
+        - network
+
+    - name: Configure vNIC template towards FI-B
+      ucs_vnic_template:
+        <<: *ucsm_conn
+        name: Ansible-Fabric-B
+        fabric: B
+        redundancy_type: secondary
+        peer_redundancy_template: Ansible-Fabric-A
+        mac_pool: Ansible-MAC-Pool
+      tags:
+        - network
+
+    - name: Configure LAN Connectivity Policy
+      ucs_lan_connectivity:
+        <<: *ucsm_conn
+        name: Ansible-LAN
+        vnic_list:
+          - name: vnic0
+            vnic_template: Ansible-Fabric-A
+            adapter_policy: VMWare
+          - name: vnic1
+            vnic_template: Ansible-Fabric-B
+            adapter_policy: VMWare
+          - name: vnic2
+            vnic_template: Ansible-Fabric-A
+            adapter_policy: VMWare
+          - name: vnic3
+            vnic_template: Ansible-Fabric-B
+            adapter_policy: VMWare
+
+    - name: Create service profile template
+      ucs_service_profile_template:
+        <<: *ucsm_conn
+        name: Ansible
+        template_type: updating-template
+        uuid_pool: Ansible-UUID-Pool
+        mgmt_inband_pool_name: Ansible-KVM-Pool
+        mgmt_interface_mode: in-band
+        lan_connectivity_policy: Ansible-LAN
+      tags:
+        - new-server
+
+    - name: Create service profiles
+      ucs_managed_objects:
+        <<: *ucsm_conn
+        objects:
+          - module: ucsmsdk.mometa.ls.LsServer
+            class: LsServer
+            properties:
+              parent_mo_or_dn: org-root
+              name: "{{ item }}"
+              src_templ_name: Ansible
+      loop: "{{ rack_servers }}"
+      tags:
+        - new-server
+
+    - name: Associate service profiles with servers
+      ucs_managed_objects:
+        <<: *ucsm_conn
+        objects:
+          - module: ucsmsdk.mometa.ls.LsBinding
+            class: LsBinding
+            properties:
+              parent_mo_or_dn: "org-root/ls-{{ item }}"
+              admin_action: unspecified
+              pn_dn: "sys/{{ item }}"
+      loop: "{{ rack_servers }}"
+      tags:
+        - new-server

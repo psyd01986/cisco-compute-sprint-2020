@@ -1,0 +1,10 @@
+ucsm-pe ansible_host=192.168.172.131 ucsm_username=ucspe ucsm_password=ucspe
+
+[ucs]
+ucsm-pe
+
+[cisco:children]
+ucs
+
+[all:vars]
+ansible_python_interpreter="/usr/bin/env python"
