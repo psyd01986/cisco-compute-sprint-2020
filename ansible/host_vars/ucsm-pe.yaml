@@ -8,8 +8,12 @@ vlans_list:
   - vlan_id: 200
     name: production
     native: false
-    state: present
+    state: absent
   - vlan_id: 201
+    name: testing
+    native: false
+    state: present
+  - vlan_id: 202
     name: testing
     native: false
     state: present
