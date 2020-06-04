@@ -67,6 +67,7 @@
         redundancy_type: secondary
         peer_redundancy_template: Ansible-Fabric-A
         mac_pool: Ansible-MAC-Pool
+         vlans_list: "{{ [{'name': 'default', 'native': 'yes', 'state': 'present'}] + vlans_list }}"
       tags:
         - network
 
